@@ -1,0 +1,18 @@
+name: Test the app code
+
+# Runs the smoke test (every screen + the buy/pay flow against a fake API) whenever app code changes.
+on:
+  push:
+    paths: ['app/**', 'tests/**', 'scripts/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: node tests/smoke.mjs

@@ -1,0 +1,154 @@
+name: Build agent app
+
+# Started by the ASBData Lite website (App\Services\AppBuildService) whenever a Pro/Premium
+# agent saves their store settings, upgrades, or an admin changes their plan. It can
+# also be started by hand: Actions > Build agent app > Run workflow > type the subdomain.
+on:
+  workflow_dispatch:
+    inputs:
+      subdomain:
+        description: "Agent subdomain name only, e.g. smekart (not smekart.asbdatalite.com)"
+        required: true
+        type: string
+
+permissions:
+  contents: write          # lets the job attach the .apk to the release
+
+# One build per store at a time; a newer request for the same store replaces an older, running one.
+concurrency:
+  group: build-${{ inputs.subdomain }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RAW_SUBDOMAIN: ${{ inputs.subdomain }}
+      API_BASE: ${{ vars.API_BASE || 'https://api.asbdatalite.com/api/v1' }}
+      RELEASE_TAG: ${{ vars.RELEASE_TAG || 'agent-apps' }}
+      STORE_BASE_DOMAIN: ${{ vars.STORE_BASE_DOMAIN || 'asbdatalite.com' }}
+      PAYMENT_INLINE: ${{ vars.PAYMENT_INLINE || 'true' }}
+    steps:
+      - name: Check the subdomain
+        run: |
+          SUB="$(echo "$RAW_SUBDOMAIN" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          if [[ ! "$SUB" =~ ^[a-z0-9]{1,40}$ ]]; then
+            echo "::error::'$RAW_SUBDOMAIN' is not a valid subdomain name (letters and numbers only, e.g. smekart)."
+            exit 1
+          fi
+          echo "APP_SUB=$SUB" >> "$GITHUB_ENV"
+          echo "Building the app for: $SUB"
+
+      - name: Check the signing secrets
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for v in KS_B64 KS_PASS KS_ALIAS KEY_PASS; do
+            if [ -z "${!v}" ]; then
+              echo "::error::A signing secret is missing ($v). Follow 'Create the signing key' in README.md first. Without the same signing key every time, users could not update the app."
+              exit 1
+            fi
+          done
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # GitHub's Ubuntu runners already have the Android SDK ($ANDROID_HOME). All that is needed is to accept
+      # its licenses so Gradle may download any missing piece. (The old android-actions/setup-android action
+      # failed because it asks for an SDK package called "tools" that Google no longer publishes.)
+      - name: Accept Android SDK licenses
+        run: |
+          echo "Android SDK at: $ANDROID_HOME"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" || true
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Fetch the store and build the web app
+        run: node scripts/prepare.mjs
+
+      - name: Create the Android project
+        run: npx cap add android
+
+      - name: Generate the app icon and splash screen
+        run: npx capacitor-assets generate --android
+
+      - name: Copy the web app into Android
+        run: npx cap sync android
+
+      - name: Sign and version the Android build
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: node scripts/patch-android.mjs
+
+      # Gradle's download servers sometimes answer 504 / time out. Download it ourselves, with retries and
+      # two other mirrors, then tell the build to use that local copy.
+      - name: Download Gradle (with retries)
+        working-directory: android
+        run: |
+          PROPS=gradle/wrapper/gradle-wrapper.properties
+          URL=$(grep '^distributionUrl=' "$PROPS" | cut -d= -f2- | sed 's/\\//g; s/-all\.zip/-bin.zip/')
+          FILE=$(basename "$URL"); VER=${FILE#gradle-}; VER=${VER%-bin.zip}
+          DEST="$RUNNER_TEMP/$FILE"; OK=0
+          for round in 1 2 3; do
+            for SRC in "$URL" "https://downloads.gradle.org/distributions/$FILE" "https://github.com/gradle/gradle-distributions/releases/download/v$VER/$FILE"; do
+              echo "Downloading $SRC (round $round)"
+              if curl -fL --retry 4 --retry-all-errors --retry-delay 10 --connect-timeout 30 --max-time 300 -o "$DEST" "$SRC" && unzip -tq "$DEST" >/dev/null; then OK=1; break 2; fi
+            done
+            sleep 20
+          done
+          [ "$OK" = 1 ] || { echo "Could not download Gradle from any source"; exit 1; }
+          sed -i '/^distributionSha256Sum=/d' "$PROPS"
+          sed -i "s#^distributionUrl=.*#distributionUrl=file\\:$DEST#" "$PROPS"
+          grep distributionUrl "$PROPS"
+
+      - name: Build the release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          for i in 1 2 3; do ./gradlew assembleRelease --no-daemon --stacktrace && break; [ "$i" = 3 ] && exit 1; echo "Build attempt $i failed (often a slow download); retrying in 20s"; sleep 20; done
+
+      - name: Name the APK after the store
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/${APP_SUB}.apk"
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ env.APP_SUB }}-apk
+          path: dist/${{ env.APP_SUB }}.apk
+          retention-days: 14
+
+      # The website's "Download App" button points at
+      #   https://github.com/<owner>/<repo>/releases/latest/download/<subdomain>.apk
+      # "latest" is ONE release, so every store's .apk lives on the same release
+      # (tag $RELEASE_TAG). Each build replaces just its own file.
+      - name: Publish to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --title "Agent apps" --notes "Always-current Android apps for every ASBData agent store. Each file is named after the store: <subdomain>.apk" --latest
+          fi
+          gh release upload "$RELEASE_TAG" "dist/${APP_SUB}.apk" --clobber
+          gh release edit "$RELEASE_TAG" --latest
+          echo "Published: https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/${APP_SUB}.apk"
