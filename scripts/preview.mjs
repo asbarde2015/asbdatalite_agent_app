@@ -56,6 +56,9 @@ const bundlesFor = (id) => SIZES.map(([size_label, price], i) => (COUNTRY === 'N
   ? { id: id * 100 + i, network: NETWORKS.find((n) => n.id === id)?.name, size_label, plan_type: i % 2 ? 'Gifting' : 'SME', validity_days: 30, price: Math.round(price * 220) }
   : { id: id * 100 + i, network: NETWORKS.find((n) => n.id === id)?.name, size_label, price: price + (id - 1) * 0.5 }));
 const demoOrders = new Map(); // reference -> order
+let demoWallet = 12.5; // the demo customer's wallet (add money, pay from it)
+const demoPaid = new Set(); // references paid on the demo payment page
+const demoFunds = new Map(); // FUND-... reference -> amount
 const demoUser = { id: 1, name: 'Ama Mensah', email: 'ama@example.com', phone: COUNTRY === 'NG' ? '08031234567' : '0551234567', email_verified: true };
 
 function send(res, status, body, type = 'application/json') {
@@ -102,9 +105,27 @@ async function demoApi(req, res, url, bodyText) {
   }
   if (p === '/settings/public') return send(res, 200, { guest_checkout_enabled: true, payment_gateways: [{ key: 'payaza', label: 'Payaza', min_amount: 0 }, { key: 'korapay', label: 'Korapay', min_amount: 10 }] });
 
+  if (m === 'POST' && p === '/wallet/fund') {
+    const reference = `FUND-${Date.now()}`;
+    demoFunds.set(reference, Number(body.amount) || 0);
+    return send(res, 200, { authorization_url: `${origin}/demo-pay?ref=${reference}`, reference, gateway: body.gateway || 'payaza' });
+  }
+  hit = p.match(/^\/payments\/confirm\/(.+)$/);
+  if (hit) {
+    const ref = decodeURIComponent(hit[1]);
+    if (demoFunds.has(ref) && demoPaid.has(ref)) { demoWallet += demoFunds.get(ref); demoFunds.delete(ref); }
+    return send(res, 200, { status: demoPaid.has(ref) ? 'success' : 'pending' });
+  }
   if (m === 'POST' && (p === '/orders/guest' || p === '/orders')) {
     const bundle = NETWORKS.flatMap((n) => bundlesFor(n.id)).find((b) => b.id === body.data_bundle_id) || bundlesFor(1)[0];
     const id = `demo-${Date.now()}`;
+    if (body.payment_method === 'wallet') {
+      if (demoWallet < bundle.price) return send(res, 422, { message: "Insufficient wallet balance. Choose 'Pay by Card or Mobile Money' instead.", code: 'insufficient_wallet_balance' });
+      demoWallet -= bundle.price;
+      const paid = { id, network: bundle.network, bundle_size: bundle.size_label, recipient_number: body.recipient_number, amount: bundle.price, status: 'delivered', payment_method: 'wallet', created_at: new Date().toISOString(), delivered_at: new Date().toISOString() };
+      demoOrders.set(`ORD-${id}`, paid);
+      return send(res, 201, { order: paid, authorization_url: null });
+    }
     const order = { id, network: bundle.network, bundle_size: bundle.size_label, recipient_number: body.recipient_number, amount: bundle.price, status: 'pending_payment', created_at: new Date().toISOString(), delivered_at: null };
     demoOrders.set(`ORD-${id}`, order);
     return send(res, 201, { order, authorization_url: `${origin}/demo-pay?ref=ORD-${id}`, reference: `ORD-${id}` });
@@ -119,13 +140,13 @@ async function demoApi(req, res, url, bodyText) {
       : send(res, 200, { order: demoOrders.get(ref) || {}, authorization_url: `${origin}/demo-pay?ref=${encodeURIComponent(ref)}` });
   }
   hit = p.match(/^\/demo\/paid\/(.+)$/);
-  if (hit) { const order = demoOrders.get(decodeURIComponent(hit[1])); if (order) { order.status = 'delivered'; order.delivered_at = new Date().toISOString(); } return send(res, 200, { ok: true }); }
+  if (hit) { const order = demoOrders.get(decodeURIComponent(hit[1])); demoPaid.add(decodeURIComponent(hit[1])); if (order) { order.status = 'delivered'; order.delivered_at = new Date().toISOString(); } return send(res, 200, { ok: true }); }
 
   if (m === 'GET' && p === '/orders') return send(res, 200, { data: [...demoOrders.values()].reverse() });
   if (p === '/auth/login' || p === '/auth/register') return send(res, 200, { token: 'demo-token', user: { ...demoUser, name: body.name || demoUser.name } });
   if (p === '/auth/logout' || p === '/auth/email/resend' || p === '/auth/email/resend-public' || p === '/auth/password/forgot') return send(res, 200, { message: 'OK' });
   if (p === '/me') return send(res, 200, { data: demoUser });
-  if (p === '/wallet') return send(res, 200, { balance: 12.5 });
+  if (p === '/wallet') return send(res, 200, { balance: demoWallet, symbol: COUNTRIES[COUNTRY].symbol, topup_min: COUNTRY === 'NG' ? 100 : 5, topup_max: COUNTRY === 'NG' ? 500000 : 5000 });
   if (p === '/wallet/transactions') return send(res, 200, { data: [{ id: 1, type: 'credit', amount: 5, description: 'Refund for a failed order', created_at: new Date().toISOString() }] });
   if (p === '/account/change-password') return send(res, 200, { message: 'Password updated.' });
   return send(res, 404, { message: `Demo: nothing for ${m} ${p}` });

@@ -8,6 +8,7 @@ import { getSession, ls } from './state.js';
 import { openSheet, segmented, field, setLoading, toast } from './ui.js';
 import { go } from './nav.js';
 import { payForOrder } from './orders.js';
+import { loadWallet, payMethodPicker, openFundWallet, notifyWallet } from './wallet.js';
 
 export const SERVICE_LABELS = { data: 'Data', airtime: 'Airtime', cable: 'Cable TV', electricity: 'Electricity', exam: 'Exam pins' };
 export const SERVICE_ICONS = { data: 'wifi', airtime: 'phone', cable: 'globe', electricity: 'bolt', exam: 'star' };
@@ -44,6 +45,8 @@ export async function openService(key, catalog) {
 
   let gateway = null;
   let gateways = [];
+  const wallet = user ? await loadWallet() : null;
+  let payPicker = null;
   let verified = null; // 'ok' | 'bad' | 'unavailable'
 
   const firstName = field({ label: 'First name', autocomplete: 'given-name', value: saved.first || '' });
@@ -199,6 +202,12 @@ export async function openService(key, catalog) {
     gatewayFor = t;
     gateways = await gatewaysFor(t);
     gateway = gateways[0]?.key || null;
+    if (user) {
+      // Signed in: pay from the wallet (fund it once, use it everywhere) or by card / Mobile Money.
+      payPicker = payMethodPicker({ gateways, wallet, amount: t, onAddMoney: async () => { if (await openFundWallet()) { sheet.close(); openService(key, catalog); } } });
+      gatewaySlot.replaceChildren(...(payPicker.el ? [payPicker.el] : []));
+      return;
+    }
     gatewaySlot.replaceChildren(...(gateways.length > 1 ? [h('div', {}, h('div', { class: 'eyebrow' }, 'Pay with'), segmented(gateways.map((g) => ({ value: g.key, label: g.label })), gateway, (v) => { gateway = v; }))] : []));
   };
   sheet.el?.addEventListener?.('input', () => drawGateways());
@@ -214,7 +223,7 @@ export async function openService(key, catalog) {
       if (!validNumber(guestPhone.value)) { guestPhone.hint(`Enter your ${digits} digit phone number`, 'bad'); return; }
     }
     await drawGateways();
-    const common = { ...collect(), storefront_domain: storeDomain(), payment_method: gateway || undefined };
+    const common = { ...collect(), storefront_domain: storeDomain(), payment_method: (payPicker ? payPicker.value() : gateway) || undefined };
     setLoading(payButton, true, 'Placing order');
     const res = user
       ? await api('/service-orders', { method: 'POST', body: common })
@@ -228,6 +237,12 @@ export async function openService(key, catalog) {
     const ref = res.data.reference || `ORD-${order.id}`;
     const rows = summary();
     sheet.close();
+    if (!res.data.authorization_url) { // paid from the wallet
+      notifyWallet();
+      toast('Paid from your wallet. Your order is being processed.', 'ok');
+      if (getSession('store')) (await import('./nav.js')).switchTab('orders');
+      return;
+    }
     const result = await payForOrder({ url: res.data.authorization_url, ref, gateway: order.payment_method || gateway, summary: rows, service: key });
     if (result.status === 'success') toast('Payment received. Your order is being processed.', 'ok');
     if (getSession('store')) (await import('./nav.js')).switchTab('orders');

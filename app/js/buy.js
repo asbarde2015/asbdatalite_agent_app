@@ -7,6 +7,7 @@ import { getSession, ls } from './state.js';
 import { openSheet, segmented, field, setLoading, toast } from './ui.js';
 import { go, switchTab } from './nav.js';
 import { payForOrder } from './orders.js';
+import { loadWallet, payMethodPicker, openFundWallet, notifyWallet } from './wallet.js';
 
 let networksCache = null;
 
@@ -26,6 +27,7 @@ export async function openPurchase({ bundle, network }) {
   const settings = await publicSettings();
   const gateways = await gatewaysFor(bundle.price);
   let gateway = gateways[0]?.key || null;
+  const wallet = user ? await loadWallet() : null;
   const saved = lastBuyer();
   const theme = networkTheme(network.name);
 
@@ -43,6 +45,7 @@ export async function openPurchase({ bundle, network }) {
     h('span', { class: 'bh-price' }, money(bundle.price)));
   applyNetworkTheme(head, theme);
 
+  let payPicker = null;
   const parts = [head];
   if (needsAccount) {
     parts.push(
@@ -56,7 +59,11 @@ export async function openPurchase({ bundle, network }) {
       stack.push(h('button', { class: 'btn text sm', style: { alignSelf: 'flex-start', height: '30px', padding: '0 4px' }, onclick: () => { number.value = cleanNumber(user.phone); number.hint(`The ${phoneDigits()} digit number that will receive the data`); } }, 'Use my number'));
     }
     if (!user) stack.push(h('div', { class: 'grid2' }, firstName.el, lastName.el), email.el);
-    if (gateways.length > 1) stack.push(h('div', {}, h('div', { class: 'eyebrow' }, 'Pay with'), segmented(gateways.map((g) => ({ value: g.key, label: g.label })), gateway, (v) => { gateway = v; })));
+    // Signed in: pay from the wallet (fund it once, use it everywhere) or by card / Mobile Money.
+    const picker = user ? payMethodPicker({ gateways, wallet, amount: bundle.price, onAddMoney: async () => { if (await openFundWallet()) { sheet.close(); openPurchase({ bundle, network }); } } }) : null;
+    payPicker = picker;
+    if (picker) { if (picker.el) stack.push(picker.el); }
+    else if (gateways.length > 1) stack.push(h('div', {}, h('div', { class: 'eyebrow' }, 'Pay with'), segmented(gateways.map((g) => ({ value: g.key, label: g.label })), gateway, (v) => { gateway = v; })));
     parts.push(
       h('div', { class: 'stack mt' }, ...stack),
       h('div', { class: 'note mt' }, icon('info', 20), h('span', {}, 'Check the number carefully. Once paid, an order cannot be undone or refunded.')),
@@ -74,7 +81,7 @@ export async function openPurchase({ bundle, network }) {
     const recipient = cleanNumber(number.value);
 
     setLoading(payButton, true, 'Placing order');
-    const common = { data_bundle_id: bundle.id, recipient_number: recipient, storefront_domain: storeDomain(), payment_method: gateway || undefined };
+    const common = { data_bundle_id: bundle.id, recipient_number: recipient, storefront_domain: storeDomain(), payment_method: (payPicker ? payPicker.value() : gateway) || undefined };
     const res = user
       ? await api('/orders', { method: 'POST', body: common })
       : await api('/orders/guest', { method: 'POST', session: null, body: { ...common, first_name: firstName.value, last_name: lastName.value, email: email.value, phone: recipient } });
@@ -85,6 +92,14 @@ export async function openPurchase({ bundle, network }) {
     const order = res.data.order;
     const ref = res.data.reference || `ORD-${order.id}`;
     sheet.close();
+
+    // Paid from the wallet: nothing more to pay, the order is already on its way.
+    if (!res.data.authorization_url) {
+      notifyWallet();
+      toast('Paid from your wallet. Your data is on its way!', 'ok');
+      switchTab('orders');
+      return;
+    }
 
     // Payaza opens in the in-app browser window; Korapay is shown on the app's own payment screen.
     const result = await payForOrder({ url: res.data.authorization_url, ref, gateway: order.payment_method || gateway, summary: [['Bundle', `${network.name} ${bundle.size_label}`], ['Recipient', recipient], ['Amount', money(order.amount)]] });

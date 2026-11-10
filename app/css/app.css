@@ -493,3 +493,9 @@ svg { flex: none; }
 .svc-head .spacer { flex: 1; } .svc-head small { color: var(--muted); }
 .svc-total { font-size: 18px; white-space: nowrap; }
 .stack > .hint { font-size: 13px; } .stack > .hint.bad { color: var(--bad); } .stack > .hint.ok { color: var(--ok); }
+
+/* ---- Add money (wallet funding) ---- */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips .chip { height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface, #fff); color: inherit; font-weight: 600; font-size: 14px; }
+.chips .chip:active { background: color-mix(in srgb, var(--primary) 10%, transparent); }
+.btn.sm { height: 38px; padding: 0 14px; font-size: 14px; flex: none; }

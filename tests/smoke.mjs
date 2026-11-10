@@ -316,12 +316,20 @@ routes['GET /me'] = () => ({ data: { id: 1, name: 'Ama Mensah', email: 'ama@exam
 routes['POST /account/change-password'] = () => ({ message: 'Password updated.' });
 setSession('store', 'tok', { name: 'Ama Mensah', email: 'ama@example.com', phone: '0551234567', email_verified: true });
 switchTab('account'); await wait(300);
-ok('signed-in account shows refund history and change password', textOf(view).includes('Refund history') && textOf(view).includes('Change password'));
+ok('signed-in account shows wallet history, add money and change password', textOf(view).includes('Wallet history') && textOf(view).includes('Add money') && textOf(view).includes('Change password'));
 ok('wallet balance is shown', textOf(view).includes('GH₵12.50'));
 await wait(600);
 ok('account screen does not refresh itself in a loop', calls.filter((c) => c === 'GET /me').length <= 2);
-await byText(view, 'Refund history').click(); await wait(300);
-ok('refund history lists the refund', textOf(sheets()).includes('Refund for failed order'));
+await byText(view, 'Wallet history').click(); await wait(300);
+ok('wallet history lists the refund', textOf(sheets()).includes('Refund for failed order'));
+document.body.querySelector('#sheet-root').querySelectorAll('.icon-btn').forEach((b) => b.click());
+await wait(500);
+// ---- funding the wallet: the sheet asks for an amount within the country's limits, then starts the payment
+routes['GET /wallet'] = () => ({ balance: 12.5, topup_min: 5, topup_max: 5000, symbol: 'GH\u20B5' });
+let fundBody = null;
+routes['POST /wallet/fund'] = (b) => { fundBody = b; return { authorization_url: 'https://pay.example/x', reference: 'FUND-TEST123', gateway: 'payaza' }; };
+await byText(view, 'Add money').click(); await wait(400);
+ok('add-money sheet opens with the balance and limits', textOf(sheets()).includes('GH\u20B512.50') && textOf(sheets()).includes('GH\u20B55.00'));
 document.body.querySelector('#sheet-root').querySelectorAll('.icon-btn').forEach((b) => b.click());
 await wait(500);
 await byText(view, 'Change password').click(); await wait(200);
@@ -346,6 +354,11 @@ ok('Nigeria: sent as X-Country NG', (await (async () => { calls.length = 0; seen
 ok('plan note shows type and validity', planNote({ plan_type: 'SME', validity_days: 30 }) === 'SME \u00B7 30d' && planNote({ validity_days: 1 }) === '1 day' && planNote({}) === 'Data bundle');
 
 // ---- services follow the store's country: Ghana sells data only, Nigeria everything
+const { payMethodPicker } = await import(pathToFileURL(path.join(ROOT, 'app/js/wallet.js')));
+const gw = [{ key: 'payaza', label: 'Payaza' }, { key: 'korapay', label: 'Korapay' }];
+ok('wallet is the default method when it covers the price', payMethodPicker({ gateways: gw, wallet: { balance: 50 }, amount: 20 }).value() === 'wallet');
+ok('a low wallet falls back to a gateway', payMethodPicker({ gateways: gw, wallet: { balance: 5 }, amount: 20 }).value() === 'payaza');
+ok('signed-out buyers never get the wallet', payMethodPicker({ gateways: gw, wallet: null, amount: 20 }).value() === 'payaza');
 const { serviceKeys } = await import(pathToFileURL(path.join(ROOT, 'app/js/services.js')));
 ok('Ghana catalogue: data only', JSON.stringify(serviceKeys({ services: { data: {} } })) === '["data"]');
 ok('Nigeria catalogue: data, airtime, cable, electricity, exam in order', JSON.stringify(serviceKeys({ services: { exam: {}, data: {}, electricity: {}, cable: {}, airtime: {} } })) === '["data","airtime","cable","electricity","exam"]');

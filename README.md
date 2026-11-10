@@ -9,7 +9,7 @@ Turns every ASBData agent store into its own **Android app**, fully automaticall
   minimal (no marketing sections): just the plans, orders and account.
 - It contains **only what the agent's customers see on the store website**: buying data, paying, signing in,
   orders, wallet/refunds and password change. There is nothing about agents, plans or the agent dashboard in it.
-- GitHub Actions builds a signed `.apk` per store and publishes it. The website's **Download App** button
+- GitHub Actions builds a signed `.apk` (to install) and `.aab` (to upload to Google Play) per store and publishes both. The website's **Download App** button
   downloads it, and **Save Store Settings** on the website starts a rebuild.
 
 ```
@@ -22,7 +22,7 @@ Agent saves store settings ─► website calls GitHub (workflow_dispatch, input
    3. capacitor-assets         generates icons + splash from the store logo and brand colour
    4. scripts/patch-android    signs with YOUR key, bumps the version
    5. gradlew assembleRelease  builds the APK
-   6. gh release upload        attaches <subdomain>.apk to the one "latest" release
+   6. gh release upload        attaches <subdomain>.apk and <subdomain>.aab to the one "latest" release
                                     │
                                     ▼
    https://github.com/asbarde2015/asbdatalite_agent_app/releases/latest/download/<subdomain>.apk

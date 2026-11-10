@@ -1,5 +1,6 @@
 // Account tab: profile + wallet for signed-in customers, sign-in prompt for everyone else.
 
+import { openFundWallet, onWalletChange } from './wallet.js';
 import { api } from './api.js';
 import { h, icon, money, initials, fmtDate } from './util.js';
 import { clearSession, getSession, state, store, updateSessionUser } from './state.js';
@@ -36,8 +37,8 @@ export function accountScreen() {
         h('div', { style: { width: '60px', height: '60px', borderRadius: '20px', background: 'var(--primary)', color: 'var(--on-primary)', display: 'grid', placeItems: 'center', fontWeight: '800', fontSize: '22px', flex: 'none' } }, initials(user.name)),
         h('div', { style: { minWidth: 0 } }, h('b', { style: { fontSize: '18px', display: 'block' } }, user.name || 'Customer'), h('span', { class: 'muted', style: { fontSize: '13px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' } }, user.email), h('span', { class: 'muted', style: { fontSize: '13px' } }, user.phone))),
       verify,
-      h('div', { class: 'card rise row spread', style: { '--i': '1' } }, h('div', {}, h('span', { class: 'muted', style: { fontSize: '13px' } }, 'Wallet balance'), h('div', {}, balance), h('span', { class: 'muted', style: { fontSize: '12px' } }, 'Refunds from failed orders land here')), h('div', { style: { color: 'var(--primary)' } }, icon('wallet', 34))),
-      menuRow('wallet', 'Refund history', openWalletHistory, 'Money returned to your wallet'),
+      h('div', { class: 'card rise row spread', style: { '--i': '1' } }, h('div', {}, h('span', { class: 'muted', style: { fontSize: '13px' } }, 'Wallet balance'), h('div', {}, balance), h('span', { class: 'muted', style: { fontSize: '12px' } }, 'Pay with it here and on the website')), h('button', { class: 'btn primary sm', onclick: () => openFundWallet() }, icon('plus', 18), 'Add money')),
+      menuRow('wallet', 'Wallet history', openWalletHistory, 'Money you added, spent and refunds'),
       menuRow('lock', 'Change password', openChangePassword),
       h('button', { class: 'btn outline block', onclick: async () => {
         if (!(await confirmSheet({ title: 'Sign out?', message: 'You can sign back in any time.', confirmText: 'Sign out' }))) return;
@@ -47,7 +48,8 @@ export function accountScreen() {
         refresh();
       } }, icon('logout', 20), 'Sign out'));
 
-    api('/wallet').then((res) => { if (res.ok) balance.textContent = money(res.data.balance); });
+    const paintBalance = () => api('/wallet').then((res) => { if (res.ok) balance.textContent = money(res.data.balance); });
+    paintBalance(); onWalletChange(paintBalance);
     api('/me').then((res) => { if (res.ok) { const u = res.data.data || res.data; updateSessionUser('store', u); verify.hidden = u.email_verified !== false; } });
   }
 
@@ -68,14 +70,14 @@ function menuRow(iconName, title, onClick, sub) {
 // Same two extras the store website's own dashboard offers: refund history and change password.
 export async function openWalletHistory() {
   const list = h('div', {}, h('div', { class: 'skeleton', style: { height: '64px' } }));
-  openSheet({ title: 'Refund history', content: list });
+  openSheet({ title: 'Wallet history', content: list });
   const res = await api('/wallet/transactions');
   const items = res.ok ? (res.data?.data || []) : [];
   list.replaceChildren(...(items.length
     ? items.map((t) => h('div', { class: 'kv' },
       h('div', {}, h('b', {}, t.description), h('small', { class: 'muted', style: { display: 'block' } }, fmtDate(t.created_at))),
       h('b', { style: { color: t.type === 'credit' ? 'var(--ok)' : 'var(--bad)' } }, `${t.type === 'credit' ? '+' : '-'}${money(t.amount)}`)))
-    : [h('p', { class: 'muted center', style: { padding: '24px 0' } }, res.ok ? 'No refunds yet.' : res.error)]));
+    : [h('p', { class: 'muted center', style: { padding: '24px 0' } }, res.ok ? 'Nothing here yet.' : res.error)]));
 }
 
 function openChangePassword() {

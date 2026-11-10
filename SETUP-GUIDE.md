@@ -48,7 +48,7 @@ Repository > **Settings > Secrets and variables > Actions > New repository secre
 ## 6. First test build
 1. **Actions > Build agent app > Run workflow**. In "subdomain" type a live store's name only (for example `smekart`, not `smekart.asbdatalite.com`). Click **Run workflow**.
 2. Wait 6 to 10 minutes. Green tick = done.
-3. Open `https://github.com/asbarde2015/asbdatalite_agent_app/releases/latest/download/smekart.apk` (use your store name). The file downloads.
+3. Open `https://github.com/asbarde2015/asbdatalite_agent_app/releases/latest/download/smekart.apk` (use your store name). The file downloads. The same release also has `smekart.aab` (same link, ending `.aab`): that is the file Google Play asks for if the agent wants to publish the app on the Play Store.
 4. Install it on an Android phone (allow "install unknown apps" for the browser) and check: splash, welcome slides, plans, buying a small bundle, orders, sign in.
 
 If a run shows a red cross, open it, click the failed step and send me the red text.

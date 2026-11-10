@@ -8,7 +8,7 @@ import { logoTile, openSheet, toast } from './ui.js';
 import { go, switchTab } from './nav.js';
 import { openExternal, openInApp } from './native.js';
 import { loadNetworks, openPurchase } from './buy.js';
-import { openWalletHistory } from './account.js';
+import { openFundWallet, onWalletChange } from './wallet.js';
 import { loadServices, serviceKeys, openService, SERVICE_LABELS, SERVICE_ICONS } from './services.js';
 
 let activeNetworkId = null;           // remembered while the app is open
@@ -37,7 +37,7 @@ export function homeScreen() {
   const quick = h('div', { class: 'quickcard' },
     quickButton('bolt', 'Buy data', () => plansTitle.scrollIntoView({ behavior: 'smooth', block: 'start' })),
     quickButton('orders', 'Orders', () => switchTab('orders')),
-    quickButton('wallet', user ? 'Refunds' : 'Sign in', () => (user ? openWalletHistory() : go('login'))),
+    quickButton('wallet', user ? 'Add money' : 'Sign in', () => (user ? openFundWallet() : go('login'))),
     quickButton('chat', 'Support', () => openSupport()));
 
   // Everything the store's country sells (Nigeria: data, airtime, cable TV, electricity, exam pins; Ghana: data).
@@ -53,7 +53,10 @@ export function homeScreen() {
   });
 
   // ---- wallet balance (signed-in customers) ----
-  if (user) api('/wallet').then((res) => { if (res.ok) balance.textContent = money(res.data.balance); });
+  if (user) {
+    const paintBalance = () => api('/wallet').then((res) => { if (res.ok) balance.textContent = money(res.data.balance); });
+    paintBalance(); onWalletChange(paintBalance);
+  }
 
   // ---- network tabs + plans ----
   function drawSkeleton(count = 6) {
