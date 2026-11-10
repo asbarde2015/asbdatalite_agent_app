@@ -1,0 +1,10 @@
+{
+  "hero": { "eyebrow": "Ghana's Fast, Affordable Data Reseller", "h1": "Cheap data, delivered fast.", "p": "Buy data for MTN, Telecel and AirtelTigo whenever you need it.", "primaryCtaText": "Create free account", "secondaryCtaText": "I already have an account", "floatingBadgeText": "Secure", "floatingCardLabel": "Payment options", "floatingCardValue": "Card & Mobile Money", "trustPoints": ["Fast, reliable delivery", "Pay directly, no top-up", "All major Ghana networks"] },
+  "about": { "eyebrow": "About Us", "h2": "Built for speed, designed for trust", "p": "Kwame's Data sells data bundles.", "features": [{ "title": "Fully automated", "text": "Delivered automatically." }, { "title": "Secure by design", "text": "Protected sessions." }] },
+  "howItWorks": { "eyebrow": "How It Works", "h2": "Up and running in 3 simple steps", "steps": [{ "title": "Create your account", "text": "Sign up." }, { "title": "Choose your plan", "text": "Pick a bundle." }, { "title": "Pay & receive", "text": "Pay by card or MoMo." }] },
+  "services": { "eyebrow": "Why Buy Here", "h2": "Why buy your data here", "p": "One focus, done right.", "items": [{ "title": "All major networks", "text": "Every plan." }, { "title": "Available 24/7", "text": "Day or night." }] },
+  "faq": { "eyebrow": "FAQ", "h2": "Common questions", "items": [{ "q": "How fast is data delivered?", "a": "Within minutes." }] },
+  "cta": { "h2": "Ready to get started?", "p": "Create your free account.", "buttonText": "Create free account" },
+  "footer": { "description": "Affordable data bundles." },
+  "auth": { "loginQuote": "Welcome back.", "registerQuote": "Sign up once." }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "asbdatalite-agent-app",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Turns an ASBData Lite agent storefront into a native-looking Android app (Capacitor), built by GitHub Actions.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "prepare:app": "node scripts/prepare.mjs",
+    "preview": "node scripts/preview.mjs",
+    "test": "node tests/smoke.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/browser": "8.0.5",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/splash-screen": "8.0.2",
+    "@capacitor/status-bar": "8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.5.2",
+    "sharp": "^0.33.5"
+  },
+  "overrides": {
+    "sharp": "^0.33.5"
+  }
+}

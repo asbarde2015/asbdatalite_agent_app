@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#2A2FA0" />
+  <meta name="color-scheme" content="light" />
+  <title>App</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <!-- Animated splash: matches the native splash (brand colour + logo tile) so the hand-over is seamless -->
+  <div id="splash" class="splash" aria-hidden="true"></div>
+
+  <div id="app" class="no-nav" hidden>
+    <main id="view"></main>
+    <nav id="nav" class="nav" aria-label="Main"></nav>
+  </div>
+
+  <div id="sheet-root"></div>
+  <div id="toast-root" aria-live="polite"></div>
+
+  <noscript>This app needs JavaScript.</noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
