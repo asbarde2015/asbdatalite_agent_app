@@ -1,0 +1,15 @@
+# Generated during a build (anchored with / so app/assets/ - your onboarding pictures - IS committed)
+/node_modules/
+/www/
+/android/
+/assets/
+/dist/
+/capacitor.config.json
+/build-info.json
+
+# Never commit signing keys
+*.keystore
+*.jks
+keystore.b64
+
+.DS_Store
