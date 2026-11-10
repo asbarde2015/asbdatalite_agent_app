@@ -12,7 +12,7 @@ on:
         type: string
 
 permissions:
-  contents: write          # lets the job attach the .apk to the release
+  contents: write          # lets the job attach the .apk and .aab to the release
 
 # One build per store at a time; a newer request for the same store replaces an older, running one.
 concurrency:
@@ -116,7 +116,7 @@ jobs:
           sed -i "s#^distributionUrl=.*#distributionUrl=file\\:$DEST#" "$PROPS"
           grep distributionUrl "$PROPS"
 
-      - name: Build the release APK
+      - name: Build the release APK and AAB
         working-directory: android
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -124,18 +124,21 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          for i in 1 2 3; do ./gradlew assembleRelease --no-daemon --stacktrace && break; [ "$i" = 3 ] && exit 1; echo "Build attempt $i failed (often a slow download); retrying in 20s"; sleep 20; done
+          for i in 1 2 3; do ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace && break; [ "$i" = 3 ] && exit 1; echo "Build attempt $i failed (often a slow download); retrying in 20s"; sleep 20; done
 
-      - name: Name the APK after the store
+      - name: Name the APK and AAB after the store
         run: |
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk "dist/${APP_SUB}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "dist/${APP_SUB}.aab"
           ls -lh dist
 
       - uses: actions/upload-artifact@v5
         with:
-          name: ${{ env.APP_SUB }}-apk
-          path: dist/${{ env.APP_SUB }}.apk
+          name: ${{ env.APP_SUB }}-android
+          path: |
+            dist/${{ env.APP_SUB }}.apk
+            dist/${{ env.APP_SUB }}.aab
           retention-days: 14
 
       # The website's "Download App" button points at
@@ -147,8 +150,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --title "Agent apps" --notes "Always-current Android apps for every ASBData agent store. Each file is named after the store: <subdomain>.apk" --latest
+            gh release create "$RELEASE_TAG" --title "Agent apps" --notes "Always-current Android apps for every ASBData agent store. Each store has two files named after it: <subdomain>.apk (to install) and <subdomain>.aab (for Google Play)" --latest
           fi
-          gh release upload "$RELEASE_TAG" "dist/${APP_SUB}.apk" --clobber
+          gh release upload "$RELEASE_TAG" "dist/${APP_SUB}.apk" "dist/${APP_SUB}.aab" --clobber
           gh release edit "$RELEASE_TAG" --latest
           echo "Published: https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/${APP_SUB}.apk"
+          echo "Play Store bundle: https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/${APP_SUB}.aab"
